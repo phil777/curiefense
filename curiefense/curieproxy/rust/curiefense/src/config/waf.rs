@@ -7,6 +7,7 @@ use regex::Regex;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
+use anyhow::anyhow;
 
 #[derive(Debug, Clone)]
 pub struct Section<A> {
@@ -224,8 +225,24 @@ fn convert_signature(entry: &WafSignature) -> anyhow::Result<Pattern> {
 pub fn resolve_signatures(raws: Vec<WafSignature>) -> anyhow::Result<WafSignatures> {
     let patterns: anyhow::Result<Vec<Pattern>> = raws.iter().map(convert_signature).collect();
     let ptrns: Patterns = Patterns::from_iter(patterns?);
-    Ok(WafSignatures {
-        db: ptrns.build::<Vectored>()?,
-        ids: raws,
-    })
+    match ptrns.build::<Vectored>() {
+        Ok(db) =>
+            Ok(WafSignatures {
+                db: db,
+                ids: raws,
+            }),
+        Err(x) => {
+            // The compilation of all patterns failed. We now compile them one by one to find the bad ones
+            let mut bad: Vec<String> = Vec::default();
+            for p in raws {
+                let pat: Pattern = convert_signature(&p)?;
+                match pat.build::<Vectored>() {
+                    Ok(_) => {},
+                    Err(_) => { bad.push(p.id.clone()) }
+                }
+            }
+            Err(anyhow!("Pattern compilation error: {:?}. WAF signatures failing are: {:?}", 
+                        x, bad.join(", ")))
+        }
+    }
 }
