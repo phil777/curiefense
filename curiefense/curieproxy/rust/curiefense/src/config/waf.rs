@@ -7,7 +7,6 @@ use regex::Regex;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
-use anyhow::anyhow;
 
 #[derive(Debug, Clone)]
 pub struct Section<A> {
@@ -222,7 +221,7 @@ fn convert_signature(entry: &WafSignature) -> anyhow::Result<Pattern> {
     )
 }
 
-pub fn resolve_signatures(raws: Vec<WafSignature>) -> anyhow::Result<WafSignatures> {
+pub fn resolve_signatures(logs: &mut Logs, raws: Vec<WafSignature>) -> anyhow::Result<WafSignatures> {
     let patterns: anyhow::Result<Vec<Pattern>> = raws.iter().map(convert_signature).collect();
     let ptrns: Patterns = Patterns::from_iter(patterns?);
     match ptrns.build::<Vectored>() {
@@ -231,18 +230,25 @@ pub fn resolve_signatures(raws: Vec<WafSignature>) -> anyhow::Result<WafSignatur
                 db: db,
                 ids: raws,
             }),
-        Err(x) => {
+        Err(_) => {
             // The compilation of all patterns failed. We now compile them one by one to find the bad ones
-            let mut bad: Vec<String> = Vec::default();
-            for p in raws {
+            let mut good: Vec<WafSignature> = Vec::with_capacity(raws.len());
+            for p in &raws {
                 let pat: Pattern = convert_signature(&p)?;
                 match pat.build::<Vectored>() {
-                    Ok(_) => {},
-                    Err(_) => { bad.push(p.id.clone()) }
+                    Ok(_) => { good.push(p.clone()); },
+                    Err(e) => { logs.error(format!("Failed to compile WAF signature id {}: [{:?}] => signature ignored",
+                                                   p.id, e));
+                    }
                 }
             }
-            Err(anyhow!("Pattern compilation error: {:?}. WAF signatures failing are: {:?}", 
-                        x, bad.join(", ")))
+            let patterns2: anyhow::Result<Vec<Pattern>> = good.iter().map(convert_signature).collect();
+            let ptrns2: Patterns = Patterns::from_iter(patterns2?);
+            logs.info(format!("Loading only {} signatures out of {}", good.len(), raws.len()));
+            Ok(WafSignatures {
+                db: ptrns2.build::<Vectored>()?,
+                ids: good,
+            })
         }
     }
 }

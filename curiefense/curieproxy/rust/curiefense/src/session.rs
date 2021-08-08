@@ -91,8 +91,7 @@ impl JRequestMap {
 
 pub fn init_config() -> (bool, Vec<String>) {
     let mut logs = Logs::default();
-    with_config_default_path(&mut logs, |_, _| {});
-    let is_ok = logs.logs.is_empty();
+    let is_ok = with_config_default_path(&mut logs, |_, _| {}).is_some();
     (is_ok, logs.to_stringvec())
 }
 

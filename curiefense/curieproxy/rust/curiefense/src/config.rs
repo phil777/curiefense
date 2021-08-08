@@ -47,11 +47,11 @@ where
     let r = f(logs, &newconfig);
     match CONFIG.write() {
         Ok(mut w) => *w = newconfig,
-        Err(rr) => logs.error(rr),
+        Err(rr) => { logs.error(rr); return None } ,
     };
     match HSDB.write() {
         Ok(mut dbw) => *dbw = Some(newhsdb),
-        Err(rr) => logs.error(rr),
+        Err(rr) => { logs.error(rr); return None } ,
     };
     Some(r)
 }
@@ -217,6 +217,7 @@ impl Config {
         let mut path = base.to_path_buf();
         path.push(fname);
         let fullpath = path.to_str().unwrap_or(fname).to_string();
+        logs.info(format!("Loading config file {}", fullpath));
         let file = match std::fs::File::open(path) {
             Ok(f) => f,
             Err(rr) => {
@@ -269,7 +270,7 @@ impl Config {
         let container_name = std::fs::read_to_string("/etc/hostname")
             .ok()
             .map(|s| s.trim().to_string());
-        let hsdb = resolve_signatures(wafsignatures).unwrap_or_else(|rr| {
+        let hsdb = resolve_signatures(logs, wafsignatures).unwrap_or_else(|rr| {
             logs.error(rr);
             WafSignatures::empty()
         });

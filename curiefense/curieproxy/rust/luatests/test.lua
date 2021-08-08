@@ -54,18 +54,14 @@ local function load_json_file(path)
     end
 end
 
-local _, err = curiefense.init_config()
-if err then
-    local failure = false
-    for _, r in ipairs(err) do
-        if not ends_with(r, "CFGLOAD") then
-          print(sfmt("curiefense.init_config failed: '%s'", r))
-          failure = true
-        end
-    end
-    if failure then
-      error("Configuration loading failed")
-    end
+local is_ok, logs = curiefense.init_config()
+for _, r in ipairs(logs) do
+   print(sfmt("curiefense.init_config: '%s'", r))
+end
+
+
+if not is_ok then
+   error("Configuration loading failed")
 end
 
 -- test that two lists contain the same tags
